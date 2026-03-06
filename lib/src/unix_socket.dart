@@ -806,7 +806,13 @@ class UnixServerSocket extends Stream<Socket> implements ServerSocket {
 
   void _acceptReadyClients() {
     while (!_closed) {
-      final int clientFd = _acceptClientFd(_fd);
+      final int clientFd;
+      try {
+        clientFd = _acceptClientFd(_fd);
+      } catch (error, stackTrace) {
+        _streamController.addError(error, stackTrace);
+        return;
+      }
       if (clientFd >= 0) {
         try {
           _streamController.add(
@@ -945,8 +951,8 @@ int _socketTypeForPlatform() {
   return _sockStream;
 }
 
-void _ensureNonBlockingSocket(int fd, {bool forceNativeShim = false}) {
-  if (_useLinuxSocketFlags() && !forceNativeShim) {
+void _ensureNonBlockingSocket(int fd) {
+  if (_useLinuxSocketFlags()) {
     return;
   }
   final int result = _nativeShim.setNonBlocking(fd, true);
@@ -969,12 +975,16 @@ int _acceptClientFd(int serverFd) {
     }
   }
 
+  if (_useLinuxSocketFlags()) {
+    throw UnsupportedError(
+      'accept4 is required on Linux/Android to keep accepted sockets non-blocking '
+      'without variadic fcntl/ioctl wrappers.',
+    );
+  }
+
   final int fd = _libc.accept(serverFd, nullptr, nullptr);
   if (fd >= 0) {
-    _ensureNonBlockingSocket(
-      fd,
-      forceNativeShim: _useLinuxSocketFlags(),
-    );
+    _ensureNonBlockingSocket(fd);
   }
   return fd;
 }
@@ -1357,7 +1367,7 @@ final class _UnixsockNativeShim {
     if (setter == null) {
       throw UnsupportedError(
         'unixsock native shim is unavailable on this runtime. '
-        'Load the package in a Flutter app (android/ios/linux/macos) so '
+        'Load the package in a Flutter app (ios/macos) so '
         'the plugin native library can be bundled and loaded. '
         'loadError=$_loadError',
       );
@@ -1382,7 +1392,6 @@ final class _UnixsockNativeShim {
 DynamicLibrary _openUnixsockShimLibrary() {
   final List<String> names = <String>[
     if (Platform.isMacOS || Platform.isIOS) 'unixsock.framework/unixsock',
-    if (Platform.isAndroid || Platform.isLinux) 'libunixsock.so',
   ];
 
   Object? lastError;

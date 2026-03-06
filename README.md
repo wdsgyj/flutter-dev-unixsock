@@ -5,7 +5,7 @@
 - `UnixSocket` implements `dart:io` 的 `Socket`
 - `UnixServerSocket` implements `dart:io` 的 `ServerSocket`
 - 全程非阻塞（`SOCK_NONBLOCK/accept4` 或 C shim + `poll` 事件循环），不会阻塞 isolate 线程
-- 规避 Dart FFI variadic 问题：Linux/Android 使用 `SOCK_NONBLOCK + accept4`，Apple 平台通过插件内 C shim 设置 non-block
+- 规避 Dart FFI variadic 问题：Linux/Android 仅使用 libc 的 `SOCK_NONBLOCK + accept4`，Apple 平台通过插件内 C shim 设置 non-block
 - 底层使用单例 Reactor isolate 复用 `poll` 事件循环；socket 数量从 `0 -> 1` 时创建，回到 `0` 时自动释放
 
 ## 平台
@@ -17,12 +17,11 @@
 
 ## 原生构建
 
-这是一个 Flutter FFI plugin package，包含以下平台构建目录：
+这是一个 Flutter package。  
+其中 iOS/macOS 通过 FFI plugin 构建 C shim；Android/Linux 直接调用 libc，不依赖额外 so。
 
-- `android/`
 - `ios/`
 - `macos/`
-- `linux/`
 - 共享 C 源码在 `src/`
 
 ## 安装
