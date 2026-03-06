@@ -1,5 +1,5 @@
 name: unixsock
-description: Non-blocking Unix domain Socket/ServerSocket subtypes built with Dart FFI on libc.
+description: Rust tokio + rustls backed Socket wrappers for Dart/Flutter via FFI.
 version: 0.1.0
 
 environment:

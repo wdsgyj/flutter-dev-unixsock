@@ -1,12 +1,17 @@
 # unixsock
 
-基于 Dart FFI 直接调用 `libc` 原语（`socket/bind/listen/accept/connect/recv/send/poll`）实现 Unix Domain Socket，提供与 Dart 标准库一致的使用方式：
+Rust + Dart FFI 的跨平台 Socket 封装，Dart 侧仅保留 Rust wrapper：
 
-- `UnixSocket` implements `dart:io` 的 `Socket`
-- `UnixServerSocket` implements `dart:io` 的 `ServerSocket`
-- 全程非阻塞（`SOCK_NONBLOCK/accept4` 或 C shim + `poll` 事件循环），不会阻塞 isolate 线程
-- 规避 Dart FFI variadic 问题：Linux/Android 仅使用 libc 的 `SOCK_NONBLOCK + accept4`，Apple 平台通过插件内 C shim 设置 non-block
-- 底层使用单例 Reactor isolate 复用 `poll` 事件循环；socket 数量从 `0 -> 1` 时创建，回到 `0` 时自动释放
+- `RustSocket` implements `dart:io` `Socket`（TCP/Unix）
+- `RustServerSocket` implements `dart:io` `ServerSocket`（TCP/Unix）
+- `RustSecurityContext`（rustls 证书上下文）
+- `RustSecureSocket` implements `dart:io` `SecureSocket`（当前支持 `connect/startConnect`）
+
+底层在 Rust 侧实现：
+
+- `tokio` 异步运行时
+- `rustls` TLS 握手与证书校验
+- `onBadCertificate` 回调由 Dart 侧决策，结果回传 Rust
 
 ## 平台
 
@@ -15,22 +20,20 @@
 - macOS
 - Linux
 
-## 原生构建
+## 构建 Rust 动态库
 
-这是一个 Flutter package。  
-其中 iOS/macOS 通过 FFI plugin 构建 C shim；Android/Linux 直接调用 libc，不依赖额外 so。
-
-- `ios/`
-- `macos/`
-- 共享 C 源码在 `src/`
-
-## 安装
-
-```yaml
-dependencies:
-  unixsock:
-    path: ../unixsock
+```bash
+cd rust
+cargo build
 ```
+
+运行 Dart/Flutter 时可通过环境变量指定动态库路径：
+
+```bash
+UNIXSOCK_RUST_LIB=/abs/path/to/libunixsock_rust.dylib
+```
+
+Linux/Android 使用 `.so`。
 
 ## 用法
 
@@ -41,14 +44,13 @@ import 'dart:io';
 import 'package:unixsock/unixsock.dart';
 
 Future<void> main() async {
-  final server = await UnixServerSocket.bind('/tmp/unixsock_echo.sock');
-  server.listen((Socket client) {
-    client.listen((data) => client.add(data));
+  final server = await RustServerSocket.bind('/tmp/rust_echo.sock', 0);
+  server.listen((socket) {
+    socket.listen((data) => socket.add(data));
   });
 
-  final client = await UnixSocket.connect('/tmp/unixsock_echo.sock');
-  client.add(utf8.encode('hello'));
-
+  final client = await RustSocket.connect('/tmp/rust_echo.sock', 0);
+  client.add(utf8.encode('hello from rust backend'));
   final echoed = await client.first;
   print(utf8.decode(echoed));
 
@@ -57,26 +59,33 @@ Future<void> main() async {
 }
 ```
 
-## Example
+TLS 客户端示例：
 
-运行 Flutter example app：
+```dart
+import 'package:unixsock/unixsock.dart';
 
-```bash
-cd example
-flutter run -d macos
+final context = RustSecurityContext(withTrustedRoots: false)
+  ..setTrustedCertificatesBytes(certPemBytes);
+
+final secure = await RustSecureSocket.connect(
+  'example.com',
+  443,
+  context: context,
+  onBadCertificate: (cert) {
+    return false;
+  },
+);
 ```
 
-也可切换到 `android/ios/linux` 目标设备运行。
+说明：`RustSecureSocket.secure/secureServer` 已支持基于 `RustSocket` 的连接升级。
 
 ## 测试
-
-项目测试：
 
 ```bash
 dart test
 ```
 
-example 测试：
+example:
 
 ```bash
 cd example

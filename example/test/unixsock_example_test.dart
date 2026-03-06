@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,7 +7,7 @@ import 'package:unixsock/unixsock.dart';
 
 void main() {
   test('example-style server/client works', () async {
-    if (!await _unixSocketRuntimeAvailable()) {
+    if (!await _rustSocketRuntimeAvailable()) {
       return;
     }
 
@@ -15,7 +16,7 @@ void main() {
     );
     final socketPath = '${tempDir.path}/example.sock';
 
-    final server = await UnixServerSocket.bind(socketPath);
+    final server = await RustServerSocket.bind(socketPath, 0);
     addTearDown(() async {
       await server.close();
       await tempDir.delete(recursive: true);
@@ -25,10 +26,8 @@ void main() {
       client.listen((data) => client.add(data), onDone: client.destroy);
     });
 
-    final client = await UnixSocket.connect(
-      socketPath,
-      timeout: const Duration(seconds: 2),
-    );
+    final client = await RustSocket.connect(socketPath, 0,
+        timeout: const Duration(seconds: 2));
     addTearDown(client.destroy);
 
     client.write('example');
@@ -39,19 +38,21 @@ void main() {
   });
 }
 
-Future<bool> _unixSocketRuntimeAvailable() async {
+Future<bool> _rustSocketRuntimeAvailable() async {
   final tempDir = await Directory.systemTemp.createTemp(
     'unixsock_probe_example_',
   );
   final socketPath = '${tempDir.path}/probe.sock';
   try {
-    final server = await UnixServerSocket.bind(
+    final server = await RustServerSocket.bind(
       socketPath,
-      deletePathOnClose: true,
+      0,
       removeExisting: true,
-    );
-    await server.close();
+    ).timeout(const Duration(seconds: 2));
+    await server.close().timeout(const Duration(seconds: 2));
     return true;
+  } on TimeoutException {
+    return false;
   } on SocketException catch (e) {
     final code = e.osError?.errorCode;
     if (code == 1 || code == 95) {
@@ -59,6 +60,8 @@ Future<bool> _unixSocketRuntimeAvailable() async {
     }
     rethrow;
   } on UnsupportedError {
+    return false;
+  } on ArgumentError {
     return false;
   } finally {
     await tempDir.delete(recursive: true);

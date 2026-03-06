@@ -10,7 +10,7 @@ Future<void> main() async {
   );
   final String socketPath = '${tempDir.path}/echo.sock';
 
-  final server = await UnixServerSocket.bind(socketPath);
+  final server = await RustServerSocket.bind(socketPath, 0);
   server.listen((Socket client) {
     client.listen(
       (data) => client.add(data),
@@ -21,10 +21,8 @@ Future<void> main() async {
     );
   });
 
-  final client = await UnixSocket.connect(
-    socketPath,
-    timeout: const Duration(seconds: 2),
-  );
+  final client = await RustSocket.connect(socketPath, 0,
+      timeout: const Duration(seconds: 2));
   client.add(utf8.encode('hello unix ffi'));
 
   final reply = await client.first.timeout(const Duration(seconds: 2));

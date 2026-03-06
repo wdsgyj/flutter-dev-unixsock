@@ -33,7 +33,7 @@ class EchoDemoPage extends StatefulWidget {
 
 class _EchoDemoPageState extends State<EchoDemoPage> {
   String _status = 'Idle';
-  String _details = 'Tap the button to run a Unix socket echo roundtrip.';
+  String _details = 'Tap the button to run a Rust socket echo roundtrip.';
   bool _running = false;
 
   Future<void> _runEcho() async {
@@ -58,15 +58,15 @@ class _EchoDemoPageState extends State<EchoDemoPage> {
     });
 
     Directory? tempDir;
-    UnixServerSocket? server;
+    RustServerSocket? server;
     StreamSubscription<Socket>? serverSub;
-    UnixSocket? client;
+    RustSocket? client;
 
     try {
       tempDir = await Directory.systemTemp.createTemp('uxs_');
       final socketPath = '${tempDir.path}/echo.sock';
 
-      server = await UnixServerSocket.bind(socketPath);
+      server = await RustServerSocket.bind(socketPath, 0);
       serverSub = server.listen((Socket socket) {
         socket.listen(
           (data) => socket.add(data),
@@ -77,8 +77,9 @@ class _EchoDemoPageState extends State<EchoDemoPage> {
         );
       });
 
-      client = await UnixSocket.connect(
+      client = await RustSocket.connect(
         socketPath,
+        0,
         timeout: const Duration(seconds: 2),
       );
 
